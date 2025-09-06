@@ -9,6 +9,6 @@ fn test(){
 fn main() -> anyhow::Result<()> {
     println!("Hello, world!");
     test();
-    //run()
+    run();
     Ok(())
 }
