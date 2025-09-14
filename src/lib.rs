@@ -1,5 +1,8 @@
 pub mod camera;
 pub mod texture;
+use std::mem;
+
+use cgmath::{InnerSpace, Rotation3, Zero};
 
 use std::sync::Arc;
 use bytemuck::{Pod, Zeroable};
@@ -15,6 +18,59 @@ use winit::{
     window::Window
 };
 
+struct Instance {
+    position: cgmath::Vector3<f32>,
+    rotation: cgmath::Quaternion<f32>
+}
+
+impl Instance {
+    fn to_raw(&self) -> InstanceRaw {
+        InstanceRaw { 
+            model: (
+                cgmath::Matrix4::from_translation(self.position) *
+                cgmath::Matrix4::from(self.rotation)
+            ).into()
+         }
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+struct InstanceRaw {
+    model: [[f32; 4]; 4]
+}
+
+// To Study
+impl InstanceRaw {
+    fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: mem::size_of::<InstanceRaw>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &[
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 5,
+                    format: wgpu::VertexFormat::Float32x4
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32;4]>()  as wgpu::BufferAddress,
+                    shader_location: 6,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 8]>() as wgpu::BufferAddress,
+                    shader_location: 7,
+                    format: wgpu::VertexFormat::Float32x4
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32;12]>() as wgpu::BufferAddress,
+                    shader_location: 8,
+                    format: wgpu::VertexFormat::Float32x4
+                }
+            ]
+        }
+    }
+}
 
 #[cfg(target_arch="wasm32")]
 use wasm_bindgen::prelude::*;
@@ -22,6 +78,8 @@ use wasm_bindgen::prelude::*;
 use crate::camera::Camera;
 
 pub struct State {
+    instances: Vec<Instance>,
+    instance_buffer: wgpu::Buffer,
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -54,7 +112,7 @@ struct Vertex {
 impl Vertex {
     fn desc() -> wgpu::VertexBufferLayout<'static> {
         VertexBufferLayout {
-            array_stride: std::mem::size_of::<Vertex>()  as wgpu::BufferAddress,
+            array_stride: mem::size_of::<Vertex>()  as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &[
                 VertexAttribute {
@@ -63,9 +121,9 @@ impl Vertex {
                     format: wgpu::VertexFormat::Float32x3   
                 },
                 VertexAttribute {
-                    offset: std::mem::size_of::<[f32;3 ]>() as wgpu::BufferAddress,
+                    offset: mem::size_of::<[f32;3 ]>() as wgpu::BufferAddress,
                     shader_location: 1,
-                    format: wgpu::VertexFormat::Float32x2 //To Study
+                    format: wgpu::VertexFormat::Float32x2 
                 }
             ]
         }
@@ -182,8 +240,16 @@ const INDICES: &[u16] = &[
 */
     ];
 
+// To Study
+const NUM_INSTANCES_PER_ROW: u32 = 2;
+// To Study
+const INSTANCE_DISPLACEMENT: cgmath::Vector3<f32> = cgmath::Vector3::new(
+    NUM_INSTANCES_PER_ROW as f32 * 0.5, 0.0,NUM_INSTANCES_PER_ROW as f32 * 0.5
+);
+
 impl State {
     pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
+
         let size = window.inner_size();
         let num_vertices = VERTICES.len() as u32;
         let num_indices = INDICES.len() as u32;
@@ -255,13 +321,11 @@ impl State {
             view_formats: vec![],
             desired_maximum_frame_latency: 2
         };
-
-        // To Study
+        
         let diffuse_bytes = include_bytes!("tree.jpg");
-        // To Study
         let diffuse_texture = texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "happy-tree").unwrap();
         
-        // To Study
+        
         let texture_bind_group_layout = device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
                 entries: &[
@@ -288,7 +352,6 @@ impl State {
             }
         );
 
-        // To Study
         let diffuse_bind_group = device.create_bind_group(
             &wgpu::BindGroupDescriptor {
                 layout: &texture_bind_group_layout,
@@ -306,10 +369,6 @@ impl State {
             },
         );
 
-
-        
-
-        // To Study
         let camera = Camera {
             eye: (0.0,0.0,3.0).into(),
             target: (0.0,0.0,0.0).into(),
@@ -319,12 +378,11 @@ impl State {
             znear: 0.1,
             zfar: 100.0,
         };
-
-        // To Study
+        
         let mut camera_uniform = camera::CameraUniform::new();
         camera_uniform.update_view_proj(&camera);
 
-        // To Study
+        
         let camera_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
                 label: Some("Camera Buffer"),
@@ -333,7 +391,6 @@ impl State {
             }
         );
 
-        // To Study
         let camera_bind_group_layout = device.create_bind_group_layout(
             &wgpu::BindGroupLayoutDescriptor {
                 label: Some("camera_bind_group_layout"),
@@ -368,14 +425,45 @@ impl State {
         let shader = device.create_shader_module(
             wgpu::ShaderModuleDescriptor{
                 label: Some("Shared"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("shader-texture.wgsl").into()),
+                source: wgpu::ShaderSource::Wgsl(include_str!("shader-instances.wgsl").into()),
+            }
+        );
+
+        
+        // To Study
+        let instances = (0..NUM_INSTANCES_PER_ROW).flat_map(|z| {
+            (0..NUM_INSTANCES_PER_ROW).map(move |x| {
+                let position = cgmath::Vector3 {
+                    x: x as f32,
+                    y: 0.0,
+                    z: z as f32
+                } - INSTANCE_DISPLACEMENT;
+
+                let rotation = if position.is_zero() {
+                    cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
+                } else {
+                    cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
+                };
+
+                Instance {
+                    position, rotation
+                }
+            })
+        }).collect::<Vec<_>>();
+
+        // To Study
+        let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
+        let instance_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Instance Buffer"),
+                contents: bytemuck::cast_slice(&instance_data),
+                usage: wgpu::BufferUsages::VERTEX
             }
         );
 
         let render_pipeline_layout = device.create_pipeline_layout(
             &wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                // To Study
                 bind_group_layouts: &[
                     &texture_bind_group_layout,
                     &camera_bind_group_layout
@@ -391,7 +479,8 @@ impl State {
                 vertex: wgpu::VertexState {
                     module: &shader,
                     entry_point: Some("vs_main"),
-                    buffers: &[Vertex::desc()],
+                    //To Study
+                    buffers: &[Vertex::desc(), InstanceRaw::desc()],
                     compilation_options: wgpu::PipelineCompilationOptions::default()
                 },
                 fragment: Some( wgpu::FragmentState {
@@ -426,7 +515,6 @@ impl State {
             }
         );
 
-        // To Study
         let camera_controller = camera::CameraController::new(0.2);
 
         Ok(Self {
@@ -447,11 +535,12 @@ impl State {
             camera_bind_group,
             camera_buffer,
             camera_uniform,
-            camera_controller
+            camera_controller,
+            instance_buffer,
+            instances
         })
     }
 
-    // To Study
     fn input(&mut self, event: &WindowEvent) -> bool {
         let result = self.camera_controller.process_events(event);
         self.update();
@@ -504,13 +593,17 @@ impl State {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            // To Study
+            
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             render_pass.set_bind_group(1,&self.camera_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            // To Study
+            render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+            
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             //render_pass.draw(0..self.num_vertices, 0..1);
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+            //To Study
+            render_pass.draw_indexed(0..self.num_indices, 0, 0..self.instances.len() as u32);
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();

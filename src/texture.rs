@@ -1,4 +1,4 @@
-use image::GenericImageView;
+use image::{EncodableLayout, GenericImageView};
 use anyhow::*;
 
 pub struct Texture {
