@@ -99,7 +99,9 @@ pub struct State {
     camera_uniform: camera::CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
-    camera_controller: camera::CameraController
+    camera_controller: camera::CameraController,
+
+    depth_texture: texture::Texture
 }
 
 #[repr(C)]
@@ -241,7 +243,7 @@ const INDICES: &[u16] = &[
     ];
 
 // To Study
-const NUM_INSTANCES_PER_ROW: u32 = 2;
+const NUM_INSTANCES_PER_ROW: u32 = 8;
 // To Study
 const INSTANCE_DISPLACEMENT: cgmath::Vector3<f32> = cgmath::Vector3::new(
     NUM_INSTANCES_PER_ROW as f32 * 0.5, 0.0,NUM_INSTANCES_PER_ROW as f32 * 0.5
@@ -472,6 +474,9 @@ impl State {
             }
         );
 
+        //To Study
+        let depth_texture = texture::Texture::create_depth_texture(&device, &config, "depth_texture");
+        
         let render_pipeline= device.create_render_pipeline(
             &wgpu::RenderPipelineDescriptor {
                 label: Some("Render Pipeline"),
@@ -504,7 +509,14 @@ impl State {
                     unclipped_depth: false,
                     conservative: false
                 },
-                depth_stencil: None,
+                //To Study
+                depth_stencil: Some(wgpu::DepthStencilState { 
+                    format: texture::Texture::DEPTH_FORMAT, 
+                    depth_write_enabled: true, 
+                    depth_compare: wgpu::CompareFunction::Less , 
+                    stencil: wgpu::StencilState::default(), 
+                    bias: wgpu::DepthBiasState::default() 
+                }),
                 multisample: wgpu::MultisampleState {
                     count: 1,
                     mask: !0,
@@ -516,6 +528,7 @@ impl State {
         );
 
         let camera_controller = camera::CameraController::new(0.2);
+
 
         Ok(Self {
             surface,
@@ -537,7 +550,8 @@ impl State {
             camera_uniform,
             camera_controller,
             instance_buffer,
-            instances
+            instances,
+            depth_texture
         })
     }
 
@@ -560,6 +574,8 @@ impl State {
             self.config.height = height;
             self.surface.configure(&self.device, &self.config);
             self.is_surface_configured = true;
+            //To Study
+            self.depth_texture = texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
         }
     }
     
@@ -587,7 +603,16 @@ impl State {
                         } 
                     }
                 )],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(
+                    wgpu::RenderPassDepthStencilAttachment {
+                        view: &self.depth_texture.view,
+                        depth_ops: Some(wgpu::Operations { 
+                            load: wgpu::LoadOp::Clear(1.0), 
+                            store: wgpu::StoreOp::Store 
+                        }),
+                        stencil_ops: None
+                    }
+                ),
                 occlusion_query_set: None,
                 timestamp_writes: None
             });
