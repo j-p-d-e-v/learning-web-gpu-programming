@@ -1,6 +1,9 @@
 pub mod camera;
 pub mod texture;
+pub mod model;
+pub mod resources;
 use std::mem;
+use model::Vertex;
 
 use cgmath::{InnerSpace, Rotation3, Zero};
 
@@ -75,7 +78,7 @@ impl InstanceRaw {
 #[cfg(target_arch="wasm32")]
 use wasm_bindgen::prelude::*;
 
-use crate::camera::Camera;
+use crate::{camera::Camera, model::ModelVertex};
 
 pub struct State {
     instances: Vec<Instance>,
@@ -89,9 +92,9 @@ pub struct State {
     window: Arc<Window>,
 
     render_pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
+    //vertex_buffer: wgpu::Buffer,
     num_vertices: u32,
-    index_buffer: wgpu::Buffer,
+    //index_buffer: wgpu::Buffer,
     num_indices: u32,
     diffuse_bind_group: wgpu::BindGroup,
 
@@ -104,35 +107,35 @@ pub struct State {
     depth_texture: texture::Texture
 }
 
-#[repr(C)]
-#[derive(Copy, Clone ,Debug, Pod, Zeroable)]
-struct Vertex {
-    position: [f32;3],
-    tex_coords: [f32; 2],
-}
+// #[repr(C)]
+// #[derive(Copy, Clone ,Debug, Pod, Zeroable)]
+// struct Vertex {
+//     position: [f32;3],
+//     tex_coords: [f32; 2],
+// }
+// 
+// impl Vertex {
+//     fn desc() -> wgpu::VertexBufferLayout<'static> {
+//         VertexBufferLayout {
+//             array_stride: mem::size_of::<Vertex>()  as wgpu::BufferAddress,
+//             step_mode: wgpu::VertexStepMode::Vertex,
+//             attributes: &[
+//                 VertexAttribute {
+//                     offset: 0,
+//                     shader_location: 0,
+//                     format: wgpu::VertexFormat::Float32x3   
+//                 },
+//                 VertexAttribute {
+//                     offset: mem::size_of::<[f32;3 ]>() as wgpu::BufferAddress,
+//                     shader_location: 1,
+//                     format: wgpu::VertexFormat::Float32x2 
+//                 }
+//             ]
+//         }
+//     }
+// }
 
-impl Vertex {
-    fn desc() -> wgpu::VertexBufferLayout<'static> {
-        VertexBufferLayout {
-            array_stride: mem::size_of::<Vertex>()  as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &[
-                VertexAttribute {
-                    offset: 0,
-                    shader_location: 0,
-                    format: wgpu::VertexFormat::Float32x3   
-                },
-                VertexAttribute {
-                    offset: mem::size_of::<[f32;3 ]>() as wgpu::BufferAddress,
-                    shader_location: 1,
-                    format: wgpu::VertexFormat::Float32x2 
-                }
-            ]
-        }
-    }
-}
-
-const VERTICES: &[Vertex] = &[ 
+const VERTICES: &[ModelVertex] = &[ 
 /* *
     Vertex { position: [-0.0868241, 0.49240386, 0.0], tex_coords: [0.4131759, 0.00759614], }, // A
     Vertex { position: [-0.49513406, 0.06958647, 0.0], tex_coords: [0.0048659444, 0.43041354], }, // B
@@ -142,69 +145,80 @@ const VERTICES: &[Vertex] = &[
 */
 
     // 0
-    Vertex {
+    ModelVertex {
         position: [0.0, 0.0, 0.0],
-        tex_coords: [0.5, 0.5]
+        tex_coords: [0.5, 0.5],
+        normal: [0.0, 0.0, 0.0],
         //color: [ 1.0, 0.0, 0.0]
     },
     // 1
-    Vertex {
+    ModelVertex {
         position: [0.0,0.5,0.0],
-        tex_coords: [0.5, 0.75]        
+        tex_coords: [0.5, 0.75],
+        normal: [0.0, 0.0, 0.0],      
         //color: [ 1.0, 0.0, 0.0]
     } ,
     // 2
-    Vertex {
+    ModelVertex {
         position: [-0.5,0.0,0.0],
-        tex_coords: [0.25, 0.5]        
+        tex_coords: [0.25, 0.5],
+        normal: [0.0, 0.0, 0.0],        
        // color: [ 1.0, 0.0, 0.0]
     } ,
     // 3
-    Vertex {
+    ModelVertex {
         position: [-0.5,1.0,0.0],
-        tex_coords: [0.4, 0.9]        
+        tex_coords: [0.4, 0.9],
+        normal: [0.0, 0.0, 0.0],        
         //color: [ 1.0, 0.0, 0.0]
     }  ,
     //4
-    Vertex {
+    ModelVertex {
         position: [-1.0,0.5,0.0],
-        tex_coords: [0.25, 0.75]       
+        tex_coords: [0.25, 0.75],
+        normal: [0.0, 0.0, 0.0],       
        // color: [ 1.0, 0.0, 0.0]
     }   ,
     //5
-    Vertex {
+    ModelVertex {
         position: [0.5,1.0,0.0],
-        tex_coords: [0.6, 0.9]       
+        tex_coords: [0.6, 0.9],
+        normal: [0.0, 0.0, 0.0],       
         //color: [ 0.0, 1.0, 0.0]
     }  ,
     //6
-    Vertex {
+    ModelVertex {
         position: [1.0,0.5,0.0],
-        tex_coords: [0.8, 0.75]      
+        tex_coords: [0.8, 0.75],
+        normal: [0.0, 0.0, 0.0],      
         //color: [ 0.0, 1.0, 0.0]
     } ,
     //7
-    Vertex {
+    ModelVertex {
         position: [0.5,0.0,0.0],
-        tex_coords: [0.75, 0.5]        
+        tex_coords: [0.75, 0.5],
+        normal: [0.0, 0.0, 0.0],        
        // color: [ 0.0, 1.0, 0.0]
     }  ,
     //8
-    Vertex {
+    ModelVertex {
         position: [0.5,-0.5,0.0],
-        tex_coords: [0.75, 0.25]        
+        tex_coords: [0.75, 0.25],
+        normal: [0.0, 0.0, 0.0],        
         //color: [ 0.0, 0.0, 1.0]
     },
     // 9
-    Vertex {
+    ModelVertex {
         position: [0.0,-1.0,0.0],
-        tex_coords: [1.0, 0.5]        
+        tex_coords: [1.0, 0.5],
+        normal: [0.0, 0.0, 0.0],        
         //color: [ 0.0, 0.0, 1.0]
     } ,
     // 10
-    Vertex {
+    ModelVertex {
         position: [-0.5,-0.5,0.0],
-        tex_coords: [0.25, 0.25]        
+        tex_coords: [0.25, 0.25],
+        normal: [0.0, 0.0, 0.0],        
         //color: [ 0.0, 0.0, 1.0]
     } 
 
@@ -291,22 +305,22 @@ impl State {
         log::info!("Device Features: {:#?}",device.features());
         log::info!("Device Limits: {:#?}",device.limits());
 
-        let vertex_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Vertex Buffer"),
-                contents: bytemuck::cast_slice(VERTICES),
-                usage: wgpu::BufferUsages::VERTEX
-            }
-        );
+       //let vertex_buffer = device.create_buffer_init(
+       //    &wgpu::util::BufferInitDescriptor {
+       //        label: Some("Vertex Buffer"),
+       //        contents: bytemuck::cast_slice(VERTICES),
+       //        usage: wgpu::BufferUsages::VERTEX
+       //    }
+       //);
 
         // To study
-        let index_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Index Buffer"),
-                contents: bytemuck::cast_slice(INDICES),
-                usage: wgpu::BufferUsages::INDEX
-            }
-        );
+        //let index_buffer = device.create_buffer_init(
+        //    &wgpu::util::BufferInitDescriptor {
+        //        label: Some("Index Buffer"),
+        //        contents: bytemuck::cast_slice(INDICES),
+        //        usage: wgpu::BufferUsages::INDEX
+        //    }
+        //);
 
         let surface_caps = surface.get_capabilities(&adapter);
         let surface_format = surface_caps.formats.iter()
@@ -485,7 +499,7 @@ impl State {
                     module: &shader,
                     entry_point: Some("vs_main"),
                     //To Study
-                    buffers: &[Vertex::desc(), InstanceRaw::desc()],
+                    buffers: &[ModelVertex::desc(), InstanceRaw::desc()],
                     compilation_options: wgpu::PipelineCompilationOptions::default()
                 },
                 fragment: Some( wgpu::FragmentState {
@@ -539,9 +553,9 @@ impl State {
             is_surface_configured: false,
             window,
             render_pipeline,
-            vertex_buffer,
+            //vertex_buffer,
             num_vertices,
-            index_buffer,
+            //index_buffer,
             num_indices,
             diffuse_bind_group,
             camera,
