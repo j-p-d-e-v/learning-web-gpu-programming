@@ -1,7 +1,5 @@
-use std::io::Cursor;
-
+use futures::io::BufReader;
 use image::EncodableLayout;
-use ::tokio::io::{AsyncBufRead, AsyncBufReadExt, BufReader};
 use wgpu::util::DeviceExt;
 use crate::{model, texture};
 
@@ -11,11 +9,11 @@ use crate::{model, texture};
 fn format_url(file_name: &str) -> reqwest::Url {
     let window = web_sys::window().unwrap();
     let location = window.location();
-    let mut origin = location.origin().unwrap();
+    let mut origin =  "http://localhost:7080".to_string(); //location.origin().unwrap();
 
-    if !origin.ends_with("learn-wgpu") {
+    //if !origin.ends_with("learn-wgpu") {
         origin = format!("{}/learn-wgpu", origin);
-    }
+    //}
     let base = reqwest::Url::parse(&format!("{}/", origin,)).unwrap();
     base.join(file_name).unwrap()
 }
@@ -40,8 +38,8 @@ pub async fn load_string(file_name: &str) -> anyhow::Result<String> {
 pub async fn load_binary(file_name: &str) -> anyhow::Result<Vec<u8>> {
     #[cfg(target_arch="wasm32")]
     let data = {
-        let ulr = format_url(file_name);
-        reqwest::get(url).await?.bytes().await?.to_vect()
+        let url = format_url(file_name);
+        reqwest::get(url).await?.bytes().await?.to_vec()
     };
     #[cfg(not(target_arch="wasm32"))]
     let data = {
@@ -73,7 +71,7 @@ pub async fn load_model(
     let obj_text = load_binary(file_name).await?;
     let mut obj_reader = BufReader::new(obj_text.as_bytes());
 
-    let (models, obj_materials) = tobj::tokio::load_obj_buf(
+    let (models, obj_materials) = tobj::futures::load_obj_buf(
         &mut obj_reader, 
         &tobj::LoadOptions {
             triangulate: true,
@@ -83,7 +81,7 @@ pub async fn load_model(
         |p| async move {
             let mat_text = load_string(&p.to_str().unwrap()).await.unwrap();
             let mut reader =  BufReader::new(mat_text.as_bytes());
-            let result = tobj::tokio::load_mtl_buf(&mut reader).await;
+            let result = tobj::futures::load_mtl_buf(&mut reader).await;
             result
         }).await?;
         
@@ -144,6 +142,8 @@ pub async fn load_model(
                 }
             }
         }).collect::<Vec<_>>();
+
+
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some(&format!("{:?} Vertex Buffer",file_name)),
             contents: bytemuck::cast_slice(&vertices),

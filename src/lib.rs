@@ -4,6 +4,7 @@ pub mod model;
 pub mod resources;
 use std::mem;
 use model::Vertex;
+use model::DrawModel;
 
 use cgmath::{InnerSpace, Rotation3, Zero};
 
@@ -104,7 +105,10 @@ pub struct State {
     camera_bind_group: wgpu::BindGroup,
     camera_controller: camera::CameraController,
 
-    depth_texture: texture::Texture
+    depth_texture: texture::Texture,
+
+    // To Study
+    obj_model: model::Model
 }
 
 // #[repr(C)]
@@ -265,7 +269,6 @@ const INSTANCE_DISPLACEMENT: cgmath::Vector3<f32> = cgmath::Vector3::new(
 
 impl State {
     pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
-
         let size = window.inner_size();
         let num_vertices = VERTICES.len() as u32;
         let num_indices = INDICES.len() as u32;
@@ -304,6 +307,7 @@ impl State {
         }).await?;
         log::info!("Device Features: {:#?}",device.features());
         log::info!("Device Limits: {:#?}",device.limits());
+
 
        //let vertex_buffer = device.create_buffer_init(
        //    &wgpu::util::BufferInitDescriptor {
@@ -447,13 +451,16 @@ impl State {
 
         
         // To Study
+        const SPACE_BETWEEN: f32 = 3.0;
         let instances = (0..NUM_INSTANCES_PER_ROW).flat_map(|z| {
             (0..NUM_INSTANCES_PER_ROW).map(move |x| {
+                let x = SPACE_BETWEEN * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
+                let z = SPACE_BETWEEN * (z as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
                 let position = cgmath::Vector3 {
-                    x: x as f32,
+                    x,
                     y: 0.0,
-                    z: z as f32
-                } - INSTANCE_DISPLACEMENT;
+                    z
+                };
 
                 let rotation = if position.is_zero() {
                     cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
@@ -543,6 +550,8 @@ impl State {
 
         let camera_controller = camera::CameraController::new(0.2);
 
+        //To Study
+        let obj_model = resources::load_model("cube.obj", &device, &queue, &texture_bind_group_layout).await.unwrap();
 
         Ok(Self {
             surface,
@@ -565,7 +574,8 @@ impl State {
             camera_controller,
             instance_buffer,
             instances,
-            depth_texture
+            depth_texture,
+            obj_model
         })
     }
 
@@ -635,14 +645,21 @@ impl State {
             
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             render_pass.set_bind_group(1,&self.camera_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            //render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             // To Study
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
             
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            //render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             //render_pass.draw(0..self.num_vertices, 0..1);
+
             //To Study
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..self.instances.len() as u32);
+            //render_pass.draw_indexed(0..self.num_indices, 0, 0..self.instances.len() as u32);
+            //let mesh = &self.obj_model.meshes[0];
+            //let material = &self.obj_model.materials[mesh.material];
+            //render_pass.draw_mesh_instanced(mesh,material, 0..self.instances.len() as u32, &self.camera_bind_group);
+
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.draw_model_instanced(&self.obj_model, 0..self.instances.len() as u32, &self.camera_bind_group);
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
@@ -784,11 +801,6 @@ pub fn run() -> anyhow::Result<()> {
     #[cfg(not(target_arch="wasm32"))]
     {
         env_logger::init();   
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        console_log::init_with_level(log::Level::Info).unwrap_throw();
     }
 
     let event_loop = EventLoop::with_user_event().build()?;
